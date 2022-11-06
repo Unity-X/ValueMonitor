@@ -58,6 +58,7 @@ namespace UnityX.ValueMonitor
             public void Tick()
             {
                 StopwatchTimes.Add(Stopwatch.Elapsed.TotalSeconds);
+                Version++;
             }
 
             public void GetValues(double timeBegin, double timeEnd, List<double> result)
@@ -94,6 +95,7 @@ namespace UnityX.ValueMonitor
             {
                 StopwatchTimes.Add(Stopwatch.Elapsed.TotalSeconds);
                 Values.Add(value);
+                Version++;
             }
 
             public void GetValues(double timeBegin, double timeEnd, List<(double time, float value)> result)
@@ -180,6 +182,7 @@ namespace UnityX.ValueMonitor
             }
         }
 
+        internal static uint Version = 0;
         internal static Stopwatch Stopwatch;
         internal static Dictionary<string, StreamImpl> Streams = new Dictionary<string, StreamImpl>();
         internal static Dictionary<string, ClockImpl> Clocks = new Dictionary<string, ClockImpl>();
@@ -187,11 +190,15 @@ namespace UnityX.ValueMonitor
         private static bool s_initialized = false;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterAssembliesLoaded)] // initializes in build & playmode
+#if UNITY_EDITOR
+        [UnityEditor.InitializeOnLoadMethod]
+#endif
         private static void Initialize()
         {
             if (s_initialized)
                 return;
             s_initialized = true;
+            CreateDefaultClocksIfNeeded();
             Stopwatch = Stopwatch.StartNew();
         }
 
@@ -223,6 +230,22 @@ namespace UnityX.ValueMonitor
                 Clocks.Remove(item);
             }
             toRemove.Clear();
+            CreateDefaultClocksIfNeeded();
+            Version++;
+        }
+
+        private static void CreateDefaultClocksIfNeeded()
+        {
+            if (!Clocks.ContainsKey("Game Time"))
+            {
+                var clock = GetClock("Game Time");
+                clock.Impl.Persistence = Persistence.PersistsUntilDisposed;
+            }
+            //if (!Clocks.ContainsKey("RealTime"))
+            //{
+            //    var clock = GetClock("RealTime");
+            //    clock.Impl.Persistence = Persistence.PersistsUntilDisposed;
+            //}
         }
 
         public static Clock GetClock(string id, Color color)
@@ -248,6 +271,7 @@ namespace UnityX.ValueMonitor
                     DisplayName = id,
                 };
                 Clocks.Add(clockImpl.Id, clockImpl);
+                Version++;
             }
             return new Clock() { Impl = clockImpl };
         }
@@ -261,6 +285,7 @@ namespace UnityX.ValueMonitor
                     DisplayName = id,
                 };
                 Streams.Add(streamImpl.Id, streamImpl);
+                Version++;
             }
             return new Stream() { Impl = streamImpl };
         }

@@ -4,6 +4,7 @@ using UnityEngine.UIElements;
 using UnityEditor.UIElements;
 using System.Collections.Generic;
 using System;
+using UnityEngine.PlayerLoop;
 
 namespace UnityX.ValueMonitor.Editor
 {
@@ -12,12 +13,17 @@ namespace UnityX.ValueMonitor.Editor
         internal class Resources
         {
             public VisualTreeAsset StreamAsset;
+            public VisualTreeAsset ClockAsset;
             public VisualTreeAsset RootAsset;
             public StyleSheet StyleAsset;
         }
 
         private Resources _resources;
-        private ListView _displayedStreamsList;
+        private ToolbarMenu _clockMenu;
+        private ListView _streamsList;
+        private uint _lastMonitorVersion;
+        private Action<DropdownMenuAction> _clocksMenuClickCallback;
+        private Func<DropdownMenuAction, DropdownMenuAction.Status> _clocksMenuEnabledCallback;
 
         [MenuItem("Window/Analysis/Value Monitor")]
         public static void ShowValueMonitor()
@@ -28,10 +34,14 @@ namespace UnityX.ValueMonitor.Editor
 
         public void CreateGUI()
         {
+            _lastMonitorVersion = uint.MaxValue;
+            _clocksMenuClickCallback = OnClocksMenuClicked;
+            _clocksMenuEnabledCallback = IsClockMenuItemEnabled;
             _resources = new Resources()
             {
                 RootAsset = EditorResources.LoadValueMonitorWindowVisualTreeAsset(),
                 StreamAsset = EditorResources.LoadValueMonitorWindowStreamVisualTreeAsset(),
+                ClockAsset = EditorResources.LoadValueMonitorWindowClockVisualTreeAsset(),
                 StyleAsset = EditorResources.LoadValueMonitorWindowStyleSheetAsset(),
             };
 
@@ -48,36 +58,128 @@ namespace UnityX.ValueMonitor.Editor
             graphElement.name = "graph";
             root.Q("GraphContainer").Add(graphElement);
 
-            _displayedStreamsList = root.Q<ListView>("DisplayedStreamsList");
-            _displayedStreamsList.itemsAdded += OnStreamsAdded;
-            _displayedStreamsList.itemsSource = ValueMonitorWindowState.instance.StreamSettings;
-            _displayedStreamsList.makeItem = () => new StreamElement(_resources);
-            _displayedStreamsList.bindItem = (VisualElement visual, int index) =>
+            _clockMenu = root.Q<ToolbarMenu>("Clocks");
+
+            //_clocksList = root.Q<ListView>("ClocksList");
+            //_clocksList.itemsAdded += OnClockAdded;
+            //_clocksList.itemsSource = ValueMonitorWindowState.instance.ClockSettings;
+            //_clocksList.makeItem = () => new ClockElement(_resources);
+            //_clocksList.bindItem = (VisualElement visual, int index) =>
+            //{
+            //    var data = ValueMonitorWindowState.instance.ClockSettings[index];
+            //    if (data == null)
+            //    {
+            //        data = new ValueMonitorWindowState.ClockSetting();
+            //        ValueMonitorWindowState.instance.ClockSettings[index] = data;
+            //    }
+            //    ((ClockElement)visual).Bind(data);
+            //};
+
+            _streamsList = root.Q<ListView>("StreamsList");
+            _streamsList.itemsAdded += OnStreamsAdded;
+            _streamsList.itemsSource = ValueMonitorWindowState.instance.StreamSettings;
+            _streamsList.makeItem = () => new StreamElement(_resources);
+            _streamsList.bindItem = (VisualElement visual, int index) =>
             {
                 var data = ValueMonitorWindowState.instance.StreamSettings[index];
                 if (data == null)
                 {
-                    data = new ValueMonitorWindowState.DisplayedStream();
+                    data = new ValueMonitorWindowState.StreamSetting();
                     ValueMonitorWindowState.instance.StreamSettings[index] = data;
                 }
                 ((StreamElement)visual).Bind(data);
             };
         }
 
-        private void OnStreamsAdded(IEnumerable<int> displayedStreamIndices)
+        private void Update()
         {
-            foreach (var displayedStreamIndex in displayedStreamIndices)
+            if (_lastMonitorVersion != Monitor.Version)
+            {
+                _lastMonitorVersion = Monitor.Version;
+                Repaint();
+
+                UpdateClocksMenu();
+            }
+        }
+
+        private void UpdateClocksMenu()
+        {
+            var menuItems = _clockMenu.menu.MenuItems();
+
+            menuItems.Add(new DropdownMenuAction("Unscaled Time", _clocksMenuClickCallback, _clocksMenuEnabledCallback, userData: null));
+
+            foreach (var clock in Monitor.Clocks.Values)
+            {
+                string displayName = clock.DisplayName;
+                if (string.IsNullOrEmpty(displayName))
+                {
+                    displayName = clock.Id;
+                }
+                menuItems.Add(new DropdownMenuAction(displayName, _clocksMenuClickCallback, _clocksMenuEnabledCallback, userData: clock.Id));
+            }
+
+            // update menu text
+            {
+                string preferredClockId = ValueMonitorWindowState.instance.PreferredClockId;
+                string preferredClockName;
+
+                if (string.IsNullOrEmpty(preferredClockId))
+                {
+                    preferredClockName = "Unscaled Time";
+                }
+                else
+                {
+                    if (Monitor.Clocks.TryGetValue(preferredClockId, out var clock))
+                    {
+                        if (!string.IsNullOrEmpty(clock.DisplayName))
+                        {
+                            preferredClockName = clock.DisplayName;
+                        }
+                        else
+                        {
+                            preferredClockName = clock.Id;
+                        }
+                    }
+                    else
+                    {
+                        preferredClockName = $"Game Time (<i>{preferredClockId}/<i> not found)";
+                    }
+                }
+
+                _clockMenu.text = preferredClockName; // unscale time, valid clock id, valid clock name, invalid clock id
+            }
+        }
+
+        private DropdownMenuAction.Status IsClockMenuItemEnabled(DropdownMenuAction menuAction)
+        {
+            if (string.IsNullOrEmpty(ValueMonitorWindowState.instance.PreferredClockId) && menuAction.userData == null)
+                return DropdownMenuAction.Status.Checked;
+
+            return ValueMonitorWindowState.instance.PreferredClockId == (string)menuAction.userData
+                ? DropdownMenuAction.Status.Checked
+                : DropdownMenuAction.Status.Normal;
+        }
+
+        private void OnClocksMenuClicked(DropdownMenuAction menuAction)
+        {
+            ValueMonitorWindowState.instance.PreferredClockId = menuAction.userData as string;
+            UpdateClocksMenu();
+        }
+
+        private void OnStreamsAdded(IEnumerable<int> streamIndices)
+        {
+            foreach (var streamIndex in streamIndices)
             {
                 GenericMenu genericMenu = new GenericMenu();
                 foreach (var item in Monitor.Streams.Keys)
                 {
                     genericMenu.AddItem(new GUIContent(item), false, () =>
                     {
-                        ValueMonitorWindowState.instance.StreamSettings[displayedStreamIndex].Id = item;
-                        _displayedStreamsList.RefreshItem(displayedStreamIndex);
+                        ValueMonitorWindowState.instance.StreamSettings[streamIndex].Id = item;
+                        _streamsList.RefreshItem(streamIndex);
                     });
                 }
-                genericMenu.DropDown(_displayedStreamsList.worldBound);
+                genericMenu.DropDown(_streamsList.worldBound);
             }
         }
 
@@ -85,7 +187,8 @@ namespace UnityX.ValueMonitor.Editor
         {
             private Label _viewLabel;
             private Toggle _viewVisibility;
-            private ValueMonitorWindowState.DisplayedStream _data;
+            private VisualElement _checkmark;
+            private ValueMonitorWindowState.StreamSetting _setting;
 
             public StreamElement(Resources resources)
             {
@@ -93,27 +196,68 @@ namespace UnityX.ValueMonitor.Editor
 
                 _viewLabel = this.Q<Label>("Label");
                 _viewVisibility = this.Q<Toggle>("Visibility");
+                _checkmark = this.Q<VisualElement>("unity-checkmark");
 
                 _viewVisibility.RegisterValueChangedCallback(OnVisibilityChanged);
             }
 
-            public void Bind(ValueMonitorWindowState.DisplayedStream displayedStream)
+            public void Bind(ValueMonitorWindowState.StreamSetting setting)
             {
-                _data = displayedStream;
+                _setting = setting;
 
-                bool isUnsetElement = string.IsNullOrEmpty(_data.Id);
+                bool isUnsetElement = string.IsNullOrEmpty(_setting.Id);
                 Monitor.StreamImpl streamData = null;
-                bool hasStreamData = !isUnsetElement && Monitor.Streams.TryGetValue(_data.Id, out streamData);
-                string labelText = hasStreamData ? streamData.DisplayName : _data.Id;
+                bool hasStreamData = !isUnsetElement && Monitor.Streams.TryGetValue(_setting.Id, out streamData);
+                string labelText = hasStreamData ? streamData.DisplayName : _setting.Id;
                 if (string.IsNullOrEmpty(labelText))
                     labelText = "<i>Unset</i>";
                 _viewLabel.text = labelText;
-                _viewVisibility.SetValueWithoutNotify(_data.Visible);
+                _viewVisibility.SetValueWithoutNotify(_setting.Visible);
+                _checkmark.style.unityBackgroundImageTintColor = hasStreamData ? Color.Lerp(Color.white, streamData.Color, 0.7f) : Color.white;
             }
 
             private void OnVisibilityChanged(ChangeEvent<bool> evt)
             {
-                _data.Visible = evt.newValue;
+                _setting.Visible = evt.newValue;
+            }
+        }
+
+        internal class ClockElement : VisualElement
+        {
+            private Label _viewLabel;
+            private RadioButton _radioButton;
+            private ValueMonitorWindowState.ClockSetting _setting;
+
+            public ClockElement(Resources resources)
+            {
+                resources.ClockAsset.CloneTree(this);
+
+                _viewLabel = this.Q<Label>("Label");
+                _radioButton = this.Q<RadioButton>();
+
+                _radioButton.RegisterValueChangedCallback(OnRadioButtonChanged);
+            }
+
+            public void Bind(ValueMonitorWindowState.ClockSetting setting)
+            {
+                _setting = setting;
+
+                bool isUnsetElement = string.IsNullOrEmpty(_setting.Id);
+                Monitor.StreamImpl streamData = null;
+                bool hasStreamData = !isUnsetElement && Monitor.Streams.TryGetValue(_setting.Id, out streamData);
+                string labelText = hasStreamData ? streamData.DisplayName : _setting.Id;
+                if (string.IsNullOrEmpty(labelText))
+                    labelText = "<i>Unset</i>";
+                _viewLabel.text = labelText;
+                _radioButton.SetValueWithoutNotify(ValueMonitorWindowState.instance.PreferredClockId == _setting.Id);
+            }
+
+            private void OnRadioButtonChanged(ChangeEvent<bool> evt)
+            {
+                if (evt.newValue == true)
+                {
+                    ValueMonitorWindowState.instance.PreferredClockId = _setting.Id;
+                }
             }
         }
     }
@@ -158,6 +302,7 @@ namespace UnityX.ValueMonitor.Editor
                 if (_enabled && target.HasPointerCapture(evt.pointerId))
                 {
                     _graph._graphDrawer.ValueDisplayRect.x -= _graph._graphDrawer.ScreenToValueVector(Vector2.right * evt.deltaPosition.x).x;
+                    _graph.MarkDirtyRepaint();
                 }
             }
 
@@ -180,15 +325,15 @@ namespace UnityX.ValueMonitor.Editor
 
         public static class Style
         {
-            public const string ClassGridLabel = "grid-label";
-            public const string ClassStreamHoverLabelValue = "stream-hover-value";
-            public const string ClassStreamHoverLabelName = "stream-hover-name";
+            public const string CLASS_GRID_LABEL = "grid-label";
+            public const string CLASS_STREAM_HOVER_LABEL_VALUE = "stream-hover-value";
+            public const string CLASS_STREAM_HOVER_LABEL_NAME = "stream-hover-name";
             public static readonly Color GridAxisColor = new Color(1, 1, 1);
             public static readonly Color GridColor = new Color(0.6f, 0.6f, 0.6f);
             public static readonly Color GridMiniColor = new Color(0.35f, 0.35f, 0.35f);
-            public const float GridCellPerPixel = 1 / 200f;
-            public const float CurvesPaddingVertical = 40f;
-            public const float StreamHoverDistMin = 25f;
+            public const float GRID_CELL_PER_PIXEL = 1 / 200f;
+            public const float CURVES_PADDING_VERTICAL = 40f;
+            public const float STREAM_HOVER_DIST_MIN = 25f;
         }
 
         private GLGraphDrawer _graphDrawer;
@@ -220,6 +365,7 @@ namespace UnityX.ValueMonitor.Editor
         {
             _lastMouseScreenPosition = evt.localMousePosition;
             _lastMouseValuePosition = _graphDrawer.ScreenToValuePos(evt.localMousePosition);
+            MarkDirtyRepaint();
         }
 
         private void OnScrollWheel(WheelEvent evt)
@@ -229,6 +375,7 @@ namespace UnityX.ValueMonitor.Editor
             float offsetDelta = -widthDelta * viewportMousePosRatio;
             _graphDrawer.ValueDisplayRect.x += offsetDelta;
             _graphDrawer.ValueDisplayRect.width += widthDelta;
+            MarkDirtyRepaint();
             evt.StopPropagation();
         }
 
@@ -238,8 +385,8 @@ namespace UnityX.ValueMonitor.Editor
             _graphDrawer.AutoZoomHorizontal = false;
             _graphDrawer.ValueDisplayRect.xMin = 0;
             _graphDrawer.ValueDisplayRect.xMax = 25;
-            _graphDrawer.GridCellPerPixel = Style.GridCellPerPixel;
-            _graphDrawer.AutoZoomPadding = new Vector2(0, -Style.CurvesPaddingVertical);
+            _graphDrawer.GridCellPerPixel = Style.GRID_CELL_PER_PIXEL;
+            _graphDrawer.AutoZoomPadding = new Vector2(0, -Style.CURVES_PADDING_VERTICAL);
 
             if (Monitor.Streams.Count == 0)
             {
@@ -298,10 +445,8 @@ namespace UnityX.ValueMonitor.Editor
                     p = _graphDrawer.LastGridDrawInfo.CellOffsetX + (_graphDrawer.LastGridDrawInfo.CellSizeX * index);
                     if (p > _graphDrawer.ValueDisplayRect.xMax)
                         break;
-                    Label label = GetNextLabel(Style.ClassGridLabel);
-                    label.style.left = _graphDrawer.ValueToScreenPos(new Vector2((float)p, 0)).x;
-                    label.style.top = StyleKeyword.Auto;
-                    label.style.bottom = 0;
+                    Label label = GetNextLabel(Style.CLASS_GRID_LABEL);
+                    label.transform.position = new Vector3(_graphDrawer.ValueToScreenPos(new Vector2((float)p, 0)).x, contentRect.height - 14, 0);
                     label.text = p.ToString();
                     index++;
                 }
@@ -316,10 +461,8 @@ namespace UnityX.ValueMonitor.Editor
                     float yPos = _graphDrawer.ValueToScreenPos(new Vector2(0, (float)p)).y;
                     if (yPos < Mathf.Abs(_graphDrawer.ScreenDisplayRect.height) - 5)
                     {
-                        Label label = GetNextLabel(Style.ClassGridLabel);
-                        label.style.left = 0;
-                        label.style.top = yPos;
-                        label.style.bottom = StyleKeyword.Auto;
+                        Label label = GetNextLabel(Style.CLASS_GRID_LABEL);
+                        label.transform.position = new Vector3(0, yPos, 0);
                         label.text = p.ToString();
                     }
                     index++;
@@ -333,7 +476,7 @@ namespace UnityX.ValueMonitor.Editor
             if (_lastMouseValuePosition != null && _lastMouseScreenPosition != null)
             {
                 double mouseValueX = _lastMouseValuePosition.Value.x;
-                float closestStreamDistance = Style.StreamHoverDistMin;
+                float closestStreamDistance = Style.STREAM_HOVER_DIST_MIN;
                 Monitor.StreamImpl closestStream = null;
                 int closestStreamValueIndex = 0;
 
@@ -374,18 +517,18 @@ namespace UnityX.ValueMonitor.Editor
                     Vector2 valuePos = new Vector2(valueX, valueY);
                     Vector2 screenPos = _graphDrawer.ValueToScreenPos(valuePos);
                     {
-                        Label valueLabel = GetNextLabel(Style.ClassStreamHoverLabelValue);
+                        Label valueLabel = GetNextLabel(Style.CLASS_STREAM_HOVER_LABEL_VALUE);
                         valueLabel.style.left = Mathf.RoundToInt(screenPos.x);
                         valueLabel.style.top = Mathf.RoundToInt(screenPos.y);
-                        valueLabel.text = valueY.ToString(closestStream.DisplayFormat);
                         valueLabel.style.color = closestStream.Color;
+                        valueLabel.text = valueY.ToString(closestStream.DisplayFormat);
                     }
                     {
-                        Label nameLabel = GetNextLabel(Style.ClassStreamHoverLabelName);
+                        Label nameLabel = GetNextLabel(Style.CLASS_STREAM_HOVER_LABEL_NAME);
                         nameLabel.style.left = Mathf.RoundToInt(screenPos.x);
                         nameLabel.style.top = Mathf.RoundToInt(screenPos.y);
-                        nameLabel.text = closestStream.DisplayName + ":";
                         nameLabel.style.color = closestStream.Color;
+                        nameLabel.text = closestStream.DisplayName + ":";
                     }
                     focusPointPosition = screenPos;
                     focusPointColor = closestStream.Color;
@@ -411,7 +554,7 @@ namespace UnityX.ValueMonitor.Editor
             var streams = new List<Monitor.StreamImpl>();
             foreach (var streamSetting in ValueMonitorWindowState.instance.StreamSettings)
             {
-                if (!streamSetting.Visible)
+                if (!streamSetting.Visible || string.IsNullOrEmpty(streamSetting.Id))
                     continue;
 
                 if (Monitor.Streams.TryGetValue(streamSetting.Id, out Monitor.StreamImpl stream))

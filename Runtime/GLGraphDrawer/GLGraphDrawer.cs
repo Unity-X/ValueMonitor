@@ -174,21 +174,21 @@ namespace UnityX.ValueMonitor
             double cellSizeApproxX = ValueDisplayRect.size.x / gridLineCountX;
             double cellSizeApproxY = ValueDisplayRect.size.y / gridLineCountY;
 
-            gridDrawInfo.CellSizeX = GetCellSizeFromApprox(cellSizeApproxX);
-            gridDrawInfo.CellSizeY = GetCellSizeFromApprox(cellSizeApproxY);
+            gridDrawInfo.CellSizeX = GetCellSizeFromApprox(cellSizeApproxX, twoLevelsUnder: false);
+            gridDrawInfo.CellSizeY = GetCellSizeFromApprox(cellSizeApproxY, twoLevelsUnder: false);
 
             gridDrawInfo.CellOffsetX = Math.Ceiling(ValueDisplayRect.xMin / gridDrawInfo.CellSizeX) * gridDrawInfo.CellSizeX;
             gridDrawInfo.CellOffsetY = Math.Ceiling(ValueDisplayRect.yMin / gridDrawInfo.CellSizeY) * gridDrawInfo.CellSizeY;
 
             // "div by 3" will cause the sub grid to be 2 subdivision levels below the main grid
-            gridDrawInfo.SubCellSizeX = GetCellSizeFromApprox(cellSizeApproxX / 3);
-            gridDrawInfo.SubCellSizeY = GetCellSizeFromApprox(cellSizeApproxY / 3);
+            gridDrawInfo.SubCellSizeX = GetCellSizeFromApprox(cellSizeApproxX, twoLevelsUnder: true);
+            gridDrawInfo.SubCellSizeY = GetCellSizeFromApprox(cellSizeApproxY, twoLevelsUnder: true);
 
             gridDrawInfo.SubCellOffsetX = Math.Ceiling(ValueDisplayRect.xMin / gridDrawInfo.SubCellSizeX) * gridDrawInfo.SubCellSizeX;
             gridDrawInfo.SubCellOffsetY = Math.Ceiling(ValueDisplayRect.yMin / gridDrawInfo.SubCellSizeY) * gridDrawInfo.SubCellSizeY;
         }
 
-        double GetCellSizeFromApprox(double cellSizeApprox)
+        double GetCellSizeFromApprox(double cellSizeApprox, bool twoLevelsUnder)
         {
             int magnitudeOrder = (int)Math.Floor(Math.Log10(cellSizeApprox));
             double magnitude = Math.Pow(10, magnitudeOrder);
@@ -196,13 +196,39 @@ namespace UnityX.ValueMonitor
 
             if (firstDigit >= 5)
             {
-                firstDigit = 5;
+                if (twoLevelsUnder)
+                {
+                    firstDigit = 1;
+                }
+                else
+                {
+                    firstDigit = 5;
+                }
             }
             else if (firstDigit >= 2)
             {
-                firstDigit = 2;
+                if (twoLevelsUnder)
+                {
+                    firstDigit = 5;
+                    magnitude /= 10;
+                }
+                else
+                {
+                    firstDigit = 2;
+                }
             }
-            // else firstDigit = 1;
+            else
+            {
+                if (twoLevelsUnder)
+                {
+                    firstDigit = 2;
+                    magnitude /= 10;
+                }
+                else
+                {
+                    firstDigit = 1;
+                }
+            }
 
             return firstDigit * magnitude;
         }

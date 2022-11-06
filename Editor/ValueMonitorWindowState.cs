@@ -7,12 +7,20 @@ namespace UnityX.ValueMonitor.Editor
     public class ValueMonitorWindowState : ScriptableSingleton<ValueMonitorWindowState>
     {
         [System.Serializable]
-        public class DisplayedStream
+        public class StreamSetting
         {
             public string Id;
             public bool Visible = true;
         }
 
-        public List<DisplayedStream> StreamSettings = new List<DisplayedStream>();
+        [System.Serializable]
+        public class ClockSetting
+        {
+            public string Id;
+        }
+
+        public List<StreamSetting> StreamSettings = new List<StreamSetting>();
+        public List<ClockSetting> ClockSettings = new List<ClockSetting>();
+        public string PreferredClockId = "";
     }
 }

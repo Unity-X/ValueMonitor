@@ -7,7 +7,7 @@
 }
 
 .stream-hover-value {
-    color: rgba(255, 249, 249, 255);
+    color: rgb(255, 249, 249);
     -unity-font-style: bold;
     font-size: 14px;
     -unity-text-align: upper-right;
@@ -27,7 +27,29 @@
     border-bottom-width: 2px;
     border-left-width: 2px;
     border-top-width: 2px;
-    -unity-font-style: bold;
+    -unity-font-style: normal;
     background-color: rgba(0, 0, 0, 0.5);
     font-size: 14px;
+}
+
+.clock > Label {
+    min-width: 0;
+}
+
+.clock {
+    margin-top: 0;
+    background-color: rgba(128, 128, 128, 0.2);
+    margin-right: 2px;
+    margin-left: 2px;
+    padding-left: 2px;
+    padding-right: 2px;
+}
+
+.clock:hover {
+    background-color: rgba(128, 128, 128, 255);
+}
+
+.unity-toolbar * {
+    flex-shrink: 1;
+    min-width: 0;
 }
