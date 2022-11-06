@@ -1,0 +1,16 @@
+{
+    "name": "UnityX.ValueMonitor",
+    "rootNamespace": "UnityX.ValueMonitor",
+    "references": [
+        "GUID:7a8d7696eb7a56745b9cdb92a8a28234"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

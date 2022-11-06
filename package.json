@@ -1,0 +1,17 @@
+{
+  "name": "com.unity-x.value-monitor",
+  "displayName": "Value Monitor",
+  "version": "0.1.0",
+  "unity": "2021.3",
+  "description": "A tool that helps you debug and monitor values and events over time and space.",
+  "keywords": [
+    "unity",
+    "X",
+    "ValueMonitor",
+    "Value",
+    "Monitor"
+  ],
+  "dependencies": {
+  },
+  "type": "library"
+}
