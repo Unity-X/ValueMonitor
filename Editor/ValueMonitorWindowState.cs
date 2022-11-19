@@ -22,5 +22,6 @@ namespace UnityX.ValueMonitor.Editor
         public List<StreamSetting> StreamSettings = new List<StreamSetting>();
         public List<ClockSetting> ClockSettings = new List<ClockSetting>();
         public string PreferredClockId = "";
+        public bool InterpolateValues = false;
     }
 }

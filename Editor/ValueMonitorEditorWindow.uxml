@@ -1,12 +1,14 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.UIElements" editor="UnityEditor.UIElements" noNamespaceSchemaLocation="../../../UIElementsSchema/UIElements.xsd" editor-extension-mode="True">
     <Style src="project://database/Packages/com.unity-x.value-monitor/Editor/ValueMonitorEditorWindow.uss?fileID=7433441132597879392&amp;guid=0ec473a16bdb20d40ba4fb31a94715c1&amp;type=3#ValueMonitorEditorWindow" />
     <uie:Toolbar>
-        <uie:ToolbarToggle focusable="false" label="Interpolate Values" style="flex-shrink: 1;" />
+        <uie:ToolbarToggle focusable="false" text="Interpolate Values" name="InterpolateValueToggle" style="flex-shrink: 1;" />
         <uie:ToolbarSpacer style="flex-grow: 1;" />
-        <uie:ToolbarMenu display-tooltip-when-elided="true" text="Real Time" name="Clocks" />
+        <uie:ToolbarMenu display-tooltip-when-elided="true" text="Unscaled Time" name="Clocks" />
     </uie:Toolbar>
     <ui:VisualElement style="height: 300px; background-color: rgb(75, 75, 75);">
         <ui:VisualElement name="GraphContainer" style="flex-grow: 1;" />
+        <ui:VisualElement name="GraphFocusFrame" picking-mode="Ignore" style="width: 1px; height: 1px; position: absolute; background-color: rgba(255, 251, 0, 0.28); transform-origin: left top;" />
+        <ui:VisualElement name="GraphLabelContainer" picking-mode="Ignore" style="flex-grow: 1; position: absolute;" />
         <ui:VisualElement name="GraphFocusPoint" picking-mode="Ignore" style="width: 10px; height: 10px; background-image: url(&apos;project://database/Packages/com.unity-x.value-monitor/Editor/circle%2016.png?fileID=2800000&amp;guid=fbc4c8d1f4aa26a4b955787a81a6f813&amp;type=3#circle 16&apos;); position: absolute;" />
     </ui:VisualElement>
     <ui:ListView reorderable="true" show-add-remove-footer="true" header-title="Streams" show-foldout-header="true" name="StreamsList" fixed-item-height="20" selection-type="Multiple" show-alternating-row-backgrounds="ContentOnly" show-bound-collection-size="false" view-data-key="ValueMonitorStreams" />

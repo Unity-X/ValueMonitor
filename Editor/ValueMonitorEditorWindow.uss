@@ -32,23 +32,6 @@
     font-size: 14px;
 }
 
-.clock > Label {
-    min-width: 0;
-}
-
-.clock {
-    margin-top: 0;
-    background-color: rgba(128, 128, 128, 0.2);
-    margin-right: 2px;
-    margin-left: 2px;
-    padding-left: 2px;
-    padding-right: 2px;
-}
-
-.clock:hover {
-    background-color: rgba(128, 128, 128, 255);
-}
-
 .unity-toolbar * {
     flex-shrink: 1;
     min-width: 0;

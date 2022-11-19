@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using UnityEngine;
+using UnityEngine.Assertions;
 
 [assembly: InternalsVisibleTo("UnityX.ValueMonitor.Editor")]
 
@@ -51,13 +52,20 @@ namespace UnityX.ValueMonitor
 
         internal class ClockImpl : TimedElementImpl
         {
+            public List<double> ClockTimes = new List<double>();
+
             public ClockImpl(string id) : base(id)
             {
             }
 
-            public void Tick()
+            public void Tick(double newTime)
             {
+                if (ClockTimes.Count > 0 && ClockTimes[ClockTimes.Count - 1] >= newTime)
+                {
+                    throw new ArgumentException($"New clock ({Id}) tick time ({newTime}) is not greater than previous tick time ({ClockTimes[ClockTimes.Count - 1]})");
+                }
                 StopwatchTimes.Add(Stopwatch.Elapsed.TotalSeconds);
+                ClockTimes.Add(newTime);
                 Version++;
             }
 
@@ -69,8 +77,38 @@ namespace UnityX.ValueMonitor
                 result.Clear();
                 for (int i = indexBegin; i < indexEnd; i++)
                 {
-                    result.Add((StopwatchTimes[i]));
+                    result.Add(StopwatchTimes[i]);
                 }
+            }
+
+            public double GetInterpolatedStopwatchTime(double clockTime)
+            {
+                return MapTime(clockTime, ClockTimes, StopwatchTimes);
+            }
+
+            public double GetInterpolatedClockTime(double stopwatchTime)
+            {
+                return MapTime(stopwatchTime, StopwatchTimes, ClockTimes);
+            }
+
+            private static double MapTime(double a, List<double> timesA, List<double> timesB)
+            {
+                if (timesA.Count < 2 || timesB.Count < 2)
+                    throw new Exception("The clock needs at least to ticks to get any interpolated value");
+
+                int index = timesA.BinarySearch(a);
+                if (index < 0) // if exact value is not found, result is bitwise complement (~ operator). Bring it back to positive value by reversing operation.
+                    index = ~index;
+
+                index = Mathf.Clamp(index, 1, timesA.Count - 1);
+
+                double lowBoundA = timesA[index - 1];
+                double highBoundA = timesA[index];
+                double lerp = (a - lowBoundA) / (highBoundA - lowBoundA);
+
+                double lowBoundB = timesB[index - 1];
+                double highBoundB = timesB[index];
+                return lerp * (highBoundB - lowBoundB) + lowBoundB;
             }
         }
 
@@ -176,9 +214,9 @@ namespace UnityX.ValueMonitor
                 Clocks.Remove(Impl.Id);
             }
 
-            public void Tick()
+            public void Tick(double newTime)
             {
-                Impl.Tick();
+                Impl.Tick(newTime);
             }
         }
 
@@ -236,16 +274,16 @@ namespace UnityX.ValueMonitor
 
         private static void CreateDefaultClocksIfNeeded()
         {
-            if (!Clocks.ContainsKey("Game Time"))
+            if (!Clocks.ContainsKey("Time Clock"))
             {
-                var clock = GetClock("Game Time");
+                var clock = GetClock("Time Clock");
                 clock.Impl.Persistence = Persistence.PersistsUntilDisposed;
             }
-            //if (!Clocks.ContainsKey("RealTime"))
-            //{
-            //    var clock = GetClock("RealTime");
-            //    clock.Impl.Persistence = Persistence.PersistsUntilDisposed;
-            //}
+            if (!Clocks.ContainsKey("Fixed Time Clock"))
+            {
+                var clock = GetClock("Fixed Time Clock");
+                clock.Impl.Persistence = Persistence.PersistsUntilDisposed;
+            }
         }
 
         public static Clock GetClock(string id, Color color)
