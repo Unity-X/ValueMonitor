@@ -5,8 +5,11 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using UnityEngine;
 using UnityEngine.Assertions;
+using UnityEngineX;
 
 [assembly: InternalsVisibleTo("UnityX.ValueMonitor.Editor")]
+
+[assembly: DeclareScriptDefineSymbol("UNITY_X_VALUE_MONITOR", "Enables the functionalities of the value monitor tool. If disabled, methods like stream.Log will not do anything.")]
 
 namespace UnityX.ValueMonitor
 {
@@ -31,6 +34,7 @@ namespace UnityX.ValueMonitor
             public Color Color;
             public Persistence Persistence;
 
+#if UNITY_X_VALUE_MONITOR
             public List<double> StopwatchTimes = new List<double>();
 
             protected int FindTimeIndex(double time, int roundingAdjustment)
@@ -48,15 +52,17 @@ namespace UnityX.ValueMonitor
             {
                 return (FindTimeIndex(timeBegin, roundingAdjustment: -1), FindTimeIndex(timeEnd, roundingAdjustment: 0));
             }
+#endif
         }
 
         internal class ClockImpl : TimedElementImpl
         {
-            public List<double> ClockTimes = new List<double>();
-
             public ClockImpl(string id) : base(id)
             {
             }
+
+#if UNITY_X_VALUE_MONITOR
+            public List<double> ClockTimes = new List<double>();
 
             public void Tick(double newTime)
             {
@@ -110,6 +116,7 @@ namespace UnityX.ValueMonitor
                 double highBoundB = timesB[index];
                 return lerp * (highBoundB - lowBoundB) + lowBoundB;
             }
+#endif
         }
 
         internal class StreamImpl
@@ -126,6 +133,7 @@ namespace UnityX.ValueMonitor
             public Color Color = Color.white;
             public Persistence Persistence = Persistence.RemovedOnSubsystemRegistration;
 
+#if UNITY_X_VALUE_MONITOR
             public List<double> StopwatchTimes = new List<double>();
             public List<float> Values = new List<float>();
 
@@ -158,6 +166,7 @@ namespace UnityX.ValueMonitor
 
                 return Mathf.Clamp(index, 0, StopwatchTimes.Count - 1);
             }
+#endif
         }
 
         public struct Stream : IDisposable
@@ -187,9 +196,12 @@ namespace UnityX.ValueMonitor
                 Streams.Remove(Impl.Id);
             }
 
+            [Conditional("UNITY_X_VALUE_MONITOR")]
             public void Log(float value)
             {
+#if UNITY_X_VALUE_MONITOR
                 Impl.Log(value);
+#endif
             }
         }
 
@@ -214,16 +226,46 @@ namespace UnityX.ValueMonitor
                 Clocks.Remove(Impl.Id);
             }
 
+            [Conditional("UNITY_X_VALUE_MONITOR")]
             public void Tick(double newTime)
             {
+#if UNITY_X_VALUE_MONITOR
                 Impl.Tick(newTime);
+#endif
             }
         }
 
-        internal static uint Version = 0;
-        internal static Stopwatch Stopwatch;
+        internal struct RecordedLog : IComparable<RecordedLog>
+        {
+            public readonly string Condition;
+            public readonly string StackTrace;
+            public readonly LogType Type;
+            public readonly double StopwatchTime;
+
+            public RecordedLog(string condition, string stackTrace, LogType type, double stopwatchTime)
+            {
+                Condition = condition;
+                StackTrace = stackTrace;
+                Type = type;
+                StopwatchTime = stopwatchTime;
+            }
+
+            public int CompareTo(RecordedLog other)
+            {
+                return StopwatchTime.CompareTo(other.StopwatchTime);
+            }
+        }
+
         internal static Dictionary<string, StreamImpl> Streams = new Dictionary<string, StreamImpl>();
         internal static Dictionary<string, ClockImpl> Clocks = new Dictionary<string, ClockImpl>();
+        internal static uint Version = 0;
+#if UNITY_X_VALUE_MONITOR
+        internal static Stopwatch Stopwatch;
+
+        // keep this private since it's accessed from thread and we want to keep usage safe
+        private static CircularBuffer<RecordedLog> s_recordedLogs = new CircularBuffer<RecordedLog>(5000);
+        private static object s_recordedLogsLock = new object();
+#endif
 
         private static bool s_initialized = false;
 
@@ -236,8 +278,46 @@ namespace UnityX.ValueMonitor
             if (s_initialized)
                 return;
             s_initialized = true;
+#if UNITY_X_VALUE_MONITOR
             CreateDefaultClocksIfNeeded();
             Stopwatch = Stopwatch.StartNew();
+            Application.logMessageReceivedThreaded += LogMessageReceivedThreaded;
+#endif
+        }
+
+#if UNITY_X_VALUE_MONITOR
+        private static void LogMessageReceived(string condition, string stackTrace, LogType type)
+        {
+            lock (s_recordedLogsLock)
+            {
+                s_recordedLogs.PushBack(new RecordedLog(condition, stackTrace, type, Stopwatch.Elapsed.TotalSeconds));
+            }
+        }
+
+        private static void LogMessageReceivedThreaded(string condition, string stackTrace, LogType type)
+        {
+            lock (s_recordedLogsLock)
+            {
+                s_recordedLogs.PushBack(new RecordedLog(condition, stackTrace, type, Stopwatch.Elapsed.TotalSeconds));
+            }
+        }
+
+        internal static void GetRecordedLogs(double stopwatchTimeBegin, double stopwatchTimeEnd, List<RecordedLog> outRecordedLogs)
+        {
+            lock (s_recordedLogsLock)
+            {
+                int logsBegin = s_recordedLogs.BinarySearch(new Monitor.RecordedLog(default, default, default, stopwatchTimeBegin));
+                if (logsBegin < 0)
+                    logsBegin = ~logsBegin;
+                int logsEnd = s_recordedLogs.BinarySearch(new Monitor.RecordedLog(default, default, default, stopwatchTimeEnd));
+                if (logsEnd < 0)
+                    logsEnd = (~logsEnd) - 1;
+
+                for (int i = logsBegin; i <= logsEnd; i++)
+                {
+                    outRecordedLogs.Add(s_recordedLogs[i]);
+                }
+            }
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
@@ -285,6 +365,7 @@ namespace UnityX.ValueMonitor
                 clock.Impl.Persistence = Persistence.PersistsUntilDisposed;
             }
         }
+#endif
 
         public static Clock GetClock(string id, Color color)
         {

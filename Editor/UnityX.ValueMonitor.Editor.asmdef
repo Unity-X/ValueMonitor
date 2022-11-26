@@ -2,6 +2,7 @@
     "name": "UnityX.ValueMonitor.Editor",
     "rootNamespace": "UnityX.ValueMonitor.Editor",
     "references": [
+        "GUID:7a8d7696eb7a56745b9cdb92a8a28234",
         "GUID:0d95946ab18b28d4cb8905ef34a42d43"
     ],
     "includePlatforms": [],
