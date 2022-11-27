@@ -12,8 +12,8 @@ namespace UnityX.ValueMonitor
 
         private void Awake()
         {
-            _updateClock = Monitor.CreateClock("Time.time Clock");
-            _fixedUpdateClock = Monitor.CreateClock("Time.fixedTime Clock");
+            _updateClock = Monitor.GetOrCreateClock("Time.time Clock");
+            _fixedUpdateClock = Monitor.GetOrCreateClock("Time.fixedTime Clock");
         }
 
         void Update()

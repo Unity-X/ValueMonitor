@@ -380,14 +380,14 @@ namespace UnityX.ValueMonitor
             Version++;
         }
 #endif
-        public static Stream CreateStream(string id, Color color, int capacity = 1000)
+        public static Stream GetOrCreateStream(string id, Color color, int capacity = 1000)
         {
-            Stream stream = CreateStream(id, capacity);
+            Stream stream = GetOrCreateStream(id, capacity);
             stream.Color = color;
             return stream;
         }
 
-        public static Clock CreateClock(string id, int capacity = 5000)
+        public static Clock GetOrCreateClock(string id, int capacity = 5000)
         {
             if (!Clocks.TryGetValue(id, out ClockImpl clockImpl))
             {
@@ -400,7 +400,7 @@ namespace UnityX.ValueMonitor
             }
             return new Clock() { Impl = clockImpl };
         }
-        public static Stream CreateStream(string id, int capacity = 1000)
+        public static Stream GetOrCreateStream(string id, int capacity = 1000)
         {
             if (!Streams.TryGetValue(id, out StreamImpl streamImpl))
             {
