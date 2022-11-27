@@ -653,7 +653,7 @@ namespace UnityX.ValueMonitor.Editor
                 _graphDrawer = new GLGraphDrawer(new Material(EditorResources.LoadGLGraphShaderAsset()));
                 _graphDrawer.AutoZoomHorizontal = false;
                 _graphDrawer.ValueDisplayRect.xMin = 0;
-                _graphDrawer.ValueDisplayRect.xMax = 15;
+                _graphDrawer.ValueDisplayRect.xMax = 7;
                 _graphDrawer.GridCellPerPixel = Style.GRID_CELL_PER_PIXEL;
                 _graphDrawer.AutoZoomPadding = new Vector2(0, -Style.CURVES_PADDING_VERTICAL);
             }

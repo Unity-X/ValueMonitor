@@ -25,17 +25,19 @@ namespace UnityX.ValueMonitor
         {
             public readonly string Id;
 
-            public TimedElementImpl(string id)
+            public TimedElementImpl(string id, int capacity)
             {
                 Id = id;
+#if UNITY_X_VALUE_MONITOR
+                StopwatchTimes = new CircularBuffer<double>(capacity);
+#endif
             }
 
             public string DisplayName;
-            public Color Color;
             public Persistence Persistence;
 
 #if UNITY_X_VALUE_MONITOR
-            public List<double> StopwatchTimes = new List<double>();
+            public readonly CircularBuffer<double> StopwatchTimes;
 
             protected int FindTimeIndex(double time, int roundingAdjustment)
             {
@@ -52,17 +54,25 @@ namespace UnityX.ValueMonitor
             {
                 return (FindTimeIndex(timeBegin, roundingAdjustment: -1), FindTimeIndex(timeEnd, roundingAdjustment: 0));
             }
+
+            public void Reset()
+            {
+                StopwatchTimes.Clear();
+            }
 #endif
         }
 
         internal class ClockImpl : TimedElementImpl
         {
-            public ClockImpl(string id) : base(id)
+            public ClockImpl(string id, int capacity) : base(id, capacity)
             {
+#if UNITY_X_VALUE_MONITOR
+                ClockTimes = new CircularBuffer<double>(capacity);
+#endif
             }
 
 #if UNITY_X_VALUE_MONITOR
-            public List<double> ClockTimes = new List<double>();
+            public readonly CircularBuffer<double> ClockTimes;
 
             public void Tick(double newTime)
             {
@@ -70,8 +80,8 @@ namespace UnityX.ValueMonitor
                 {
                     throw new ArgumentException($"New clock ({Id}) tick time ({newTime}) is not greater than previous tick time ({ClockTimes[ClockTimes.Count - 1]})");
                 }
-                StopwatchTimes.Add(Stopwatch.Elapsed.TotalSeconds);
-                ClockTimes.Add(newTime);
+                StopwatchTimes.PushBack(Stopwatch.Elapsed.TotalSeconds);
+                ClockTimes.PushBack(newTime);
                 Version++;
             }
 
@@ -97,7 +107,7 @@ namespace UnityX.ValueMonitor
                 return MapTime(stopwatchTime, StopwatchTimes, ClockTimes);
             }
 
-            private static double MapTime(double a, List<double> timesA, List<double> timesB)
+            private static double MapTime(double a, CircularBuffer<double> timesA, CircularBuffer<double> timesB)
             {
                 if (timesA.Count < 2 || timesB.Count < 2)
                     throw new Exception("The clock needs at least to ticks to get any interpolated value");
@@ -123,9 +133,13 @@ namespace UnityX.ValueMonitor
         {
             public readonly string Id;
 
-            public StreamImpl(string id)
+            public StreamImpl(string id, int capacity)
             {
                 Id = id;
+#if UNITY_X_VALUE_MONITOR
+                StopwatchTimes = new CircularBuffer<double>(capacity);
+                Values = new CircularBuffer<float>(capacity);
+#endif
             }
 
             public string DisplayFormat = "0.##";
@@ -134,13 +148,13 @@ namespace UnityX.ValueMonitor
             public Persistence Persistence = Persistence.RemovedOnSubsystemRegistration;
 
 #if UNITY_X_VALUE_MONITOR
-            public List<double> StopwatchTimes = new List<double>();
-            public List<float> Values = new List<float>();
+            public readonly CircularBuffer<double> StopwatchTimes;
+            public readonly CircularBuffer<float> Values;
 
             public void Log(float value)
             {
-                StopwatchTimes.Add(Stopwatch.Elapsed.TotalSeconds);
-                Values.Add(value);
+                StopwatchTimes.PushBack(Stopwatch.Elapsed.TotalSeconds);
+                Values.PushBack(value);
                 Version++;
             }
 
@@ -165,6 +179,12 @@ namespace UnityX.ValueMonitor
                 }
 
                 return Mathf.Clamp(index, 0, StopwatchTimes.Count - 1);
+            }
+
+            public void Reset()
+            {
+                StopwatchTimes.Clear();
+                Values.Clear();
             }
 #endif
         }
@@ -197,6 +217,14 @@ namespace UnityX.ValueMonitor
             }
 
             [Conditional("UNITY_X_VALUE_MONITOR")]
+            public void Reset()
+            {
+#if UNITY_X_VALUE_MONITOR
+                Impl.Reset();
+#endif
+            }
+
+            [Conditional("UNITY_X_VALUE_MONITOR")]
             public void Log(float value)
             {
 #if UNITY_X_VALUE_MONITOR
@@ -209,12 +237,6 @@ namespace UnityX.ValueMonitor
         {
             internal ClockImpl Impl;
 
-            public Color Color
-            {
-                get => Impl.Color;
-                set => Impl.Color = value;
-            }
-
             public string DisplayName
             {
                 get => Impl.DisplayName;
@@ -224,6 +246,14 @@ namespace UnityX.ValueMonitor
             public void Dispose()
             {
                 Clocks.Remove(Impl.Id);
+            }
+
+            [Conditional("UNITY_X_VALUE_MONITOR")]
+            public void Reset()
+            {
+#if UNITY_X_VALUE_MONITOR
+                Impl.Reset();
+#endif
             }
 
             [Conditional("UNITY_X_VALUE_MONITOR")]
@@ -279,7 +309,6 @@ namespace UnityX.ValueMonitor
                 return;
             s_initialized = true;
 #if UNITY_X_VALUE_MONITOR
-            CreateDefaultClocksIfNeeded();
             Stopwatch = Stopwatch.StartNew();
             Application.logMessageReceivedThreaded += LogMessageReceivedThreaded;
 #endif
@@ -348,45 +377,22 @@ namespace UnityX.ValueMonitor
                 Clocks.Remove(item);
             }
             toRemove.Clear();
-            CreateDefaultClocksIfNeeded();
             Version++;
         }
-
-        private static void CreateDefaultClocksIfNeeded()
-        {
-            if (!Clocks.ContainsKey("Time Clock"))
-            {
-                var clock = GetClock("Time Clock");
-                clock.Impl.Persistence = Persistence.PersistsUntilDisposed;
-            }
-            if (!Clocks.ContainsKey("Fixed Time Clock"))
-            {
-                var clock = GetClock("Fixed Time Clock");
-                clock.Impl.Persistence = Persistence.PersistsUntilDisposed;
-            }
-        }
 #endif
-
-        public static Clock GetClock(string id, Color color)
+        public static Stream CreateStream(string id, Color color, int capacity = 1000)
         {
-            Clock clock = GetClock(id);
-            clock.Color = color;
-            return clock;
-        }
-        public static Stream GetStream(string id, Color color)
-        {
-            Stream stream = GetStream(id);
+            Stream stream = CreateStream(id, capacity);
             stream.Color = color;
             return stream;
         }
 
-        public static Clock GetClock(string id)
+        public static Clock CreateClock(string id, int capacity = 5000)
         {
             if (!Clocks.TryGetValue(id, out ClockImpl clockImpl))
             {
-                clockImpl = new ClockImpl(id)
+                clockImpl = new ClockImpl(id, capacity)
                 {
-                    Color = Color.white,
                     DisplayName = id,
                 };
                 Clocks.Add(clockImpl.Id, clockImpl);
@@ -394,11 +400,11 @@ namespace UnityX.ValueMonitor
             }
             return new Clock() { Impl = clockImpl };
         }
-        public static Stream GetStream(string id)
+        public static Stream CreateStream(string id, int capacity = 1000)
         {
             if (!Streams.TryGetValue(id, out StreamImpl streamImpl))
             {
-                streamImpl = new StreamImpl(id)
+                streamImpl = new StreamImpl(id, capacity)
                 {
                     Color = Color.white,
                     DisplayName = id,
@@ -409,10 +415,62 @@ namespace UnityX.ValueMonitor
             return new Stream() { Impl = streamImpl };
         }
 
+        public enum PresetColor
+        {
+            Red,
+            Green,
+            Blue,
+            White,
+            Black,
+            Yellow,
+            Cyan,
+            Magenta,
+            Gray,
+            Grey,
+        }
+
+        private static Color GetColor(PresetColor presetColor)
+        {
+            return presetColor switch
+            {
+                PresetColor.Red => Color.red,
+                PresetColor.Green => Color.green,
+                PresetColor.Blue => Color.blue,
+                PresetColor.Black => Color.black,
+                PresetColor.Yellow => Color.yellow,
+                PresetColor.Cyan => Color.cyan,
+                PresetColor.Magenta => Color.magenta,
+                PresetColor.Gray => Color.gray,
+                PresetColor.Grey => Color.grey,
+                _ or PresetColor.White => Color.white,
+            };
+        }
+
         [AttributeUsage(AttributeTargets.Method | AttributeTargets.Field | AttributeTargets.Property)]
         public class AutoMonitor : Attribute
         {
-            // TODO, search for all static members with this attribute and log them at every clock
+            internal float ColorR;
+            internal float ColorG;
+            internal float ColorB;
+            internal PresetColor PresetColor;
+            internal bool UsePresetColor;
+            internal int Capacity = 1000;
+
+            public AutoMonitor(float colorR, float colorG, float colorB, int capacity = 1000, string customId = null, string exclusiveClocks = null)
+            {
+                ColorR = colorR;
+                ColorG = colorG;
+                ColorB = colorB;
+                UsePresetColor = false;
+                Capacity = capacity;
+            }
+
+            public AutoMonitor(PresetColor color, int capacity = 1000, string customId = null, string exclusiveClocks = null)
+            {
+                UsePresetColor = true;
+                PresetColor = color;
+                Capacity = capacity;
+            }
         }
     }
 }
