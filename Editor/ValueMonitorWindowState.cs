@@ -23,5 +23,11 @@ namespace UnityX.ValueMonitor.Editor
         public List<ClockSetting> ClockSettings = new List<ClockSetting>();
         public string PreferredClockId = "";
         public bool InterpolateValues = false;
+        public bool FollowLatestValuesInGraph = true;
+
+        public void Save()
+        {
+            Save(saveAsText: true);
+        }
     }
 }

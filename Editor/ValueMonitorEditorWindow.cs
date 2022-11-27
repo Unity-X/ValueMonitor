@@ -32,6 +32,7 @@ namespace UnityX.ValueMonitor.Editor
         private List<Monitor.RecordedLog> _frameLogs = new List<Monitor.RecordedLog>();
         private TextField _logDetails;
         private GraphElement _graphElement;
+        private Toggle _followToggle;
 
         [MenuItem("Window/Analysis/Value Monitor")]
         public static void ShowValueMonitor()
@@ -60,6 +61,13 @@ namespace UnityX.ValueMonitor.Editor
             _resources.RootAsset.CloneTree(root);
             root.styleSheets.Add(_resources.StyleAsset);
 
+            _clockMenu = root.Q<ToolbarMenu>("Clocks");
+            _streamsList = root.Q<ListView>("StreamsList");
+            _interpolateValueToggle = root.Q<Toggle>("InterpolateValueToggle");
+            _logList = root.Q<ListView>("Logs");
+            _logDetails = root.Q<TextField>("LogDetails");
+            _followToggle = root.Q<Toggle>("FollowToggle");
+
             VisualElement graphFocusPoint = root.Q("GraphFocusPoint");
             VisualElement graphFocusFrame = root.Q("GraphFocusFrame");
             VisualElement graphSelectedTimeSpan = root.Q("GraphSelectedTimeSpan");
@@ -68,13 +76,11 @@ namespace UnityX.ValueMonitor.Editor
 
             _graphElement = new GraphElement(graphFocusPoint, graphFocusFrame, graphLabelContainer, graphSelectedTimeSpan);
             _graphElement.name = "graph";
+            _graphElement.CameraMovedManually += OnGraphCameraMoved;
             _graphElement.TimeSpanSelected += OnGraphTimeSpanSelected;
             _graphElement.TimeSpanDeselected += OnGraphTimeSpanDeselected;
             root.Q("GraphContainer").Add(_graphElement);
 
-            _clockMenu = root.Q<ToolbarMenu>("Clocks");
-
-            _streamsList = root.Q<ListView>("StreamsList");
             _streamsList.itemsAdded += OnStreamsAdded;
             _streamsList.itemsSource = ValueMonitorWindowState.instance.StreamSettings;
             _streamsList.makeItem = () => new StreamElement(_resources);
@@ -85,27 +91,37 @@ namespace UnityX.ValueMonitor.Editor
                 {
                     data = new ValueMonitorWindowState.StreamSetting();
                     ValueMonitorWindowState.instance.StreamSettings[index] = data;
+                    ValueMonitorWindowState.instance.Save();
                 }
                 ((StreamElement)visual).Bind(data);
             };
 
-            _interpolateValueToggle = root.Q<Toggle>("InterpolateValueToggle");
             _interpolateValueToggle.SetValueWithoutNotify(ValueMonitorWindowState.instance.InterpolateValues);
             _interpolateValueToggle.RegisterValueChangedCallback((ChangeEvent<bool> evnt) =>
             {
                 ValueMonitorWindowState.instance.InterpolateValues = evnt.newValue;
+                ValueMonitorWindowState.instance.Save();
                 _graphElement.MarkDirtyRepaint();
             });
 
-            _logList = root.Q<ListView>("Logs");
             _logList.onSelectedIndicesChange += OnSelectedLogsIndicesChanged;
             _logList.makeItem = () => new LogElement(_resources);
             _logList.itemsSource = _frameLogs;
             _logList.bindItem = (VisualElement visual, int logIndex) => (visual as LogElement).Bind(_frameLogs[logIndex]);
-            _logList.headerTitle = "Logs";
 
-            _logDetails = root.Q<TextField>("LogDetails");
-            OnSelectedLogsIndicesChanged(null); // simulate selecting nothing
+            _followToggle.value = ValueMonitorWindowState.instance.FollowLatestValuesInGraph;
+            _followToggle.RegisterValueChangedCallback((ChangeEvent<bool> evnt) =>
+            {
+                ValueMonitorWindowState.instance.FollowLatestValuesInGraph = evnt.newValue;
+                ValueMonitorWindowState.instance.Save();
+            });
+
+            OnGraphTimeSpanDeselected(); // simulate selecting nothing
+        }
+
+        private void OnGraphCameraMoved()
+        {
+            _followToggle.value = false;
         }
 
         private void OnSelectedLogsIndicesChanged(IEnumerable<int> logsIndices)
@@ -136,6 +152,7 @@ namespace UnityX.ValueMonitor.Editor
 
         private void OnGraphTimeSpanDeselected()
         {
+            _logList.headerTitle = "Logs";
             _frameLogs.Clear();
             _logList.RefreshItems();
             _logDetails.visible = false;
@@ -213,6 +230,7 @@ namespace UnityX.ValueMonitor.Editor
         private void OnClocksMenuClicked(DropdownMenuAction menuAction)
         {
             ValueMonitorWindowState.instance.PreferredClockId = menuAction.userData as string;
+            ValueMonitorWindowState.instance.Save();
             UpdateClocksMenu();
 
             // force update logs display
@@ -230,6 +248,7 @@ namespace UnityX.ValueMonitor.Editor
                     genericMenu.AddItem(new GUIContent(item), false, () =>
                     {
                         ValueMonitorWindowState.instance.StreamSettings[streamIndex].Id = item;
+                        ValueMonitorWindowState.instance.Save();
                         _streamsList.RefreshItem(streamIndex);
                     });
                 }
@@ -379,6 +398,7 @@ namespace UnityX.ValueMonitor.Editor
                     if (_dragStarted && target.HasPointerCapture(evt.pointerId))
                     {
                         _graph._graphDrawer.ValueDisplayRect.x -= _graph._graphDrawer.ScreenToValueVector(Vector2.right * evt.deltaPosition.x).x;
+                        _graph.CameraMovedManually?.Invoke();
                         _graph.MarkDirtyRepaint();
                     }
                 }
@@ -404,8 +424,8 @@ namespace UnityX.ValueMonitor.Editor
 
                 public SelectTimeSpanDragManipulator(GraphElement target)
                 {
-                    this.target = target;
                     _graph = target;
+                    this.target = target;
                 }
 
                 protected override void RegisterCallbacksOnTarget()
@@ -414,6 +434,7 @@ namespace UnityX.ValueMonitor.Editor
                     target.RegisterCallback<PointerMoveEvent>(HandlePointerMove);
                     target.RegisterCallback<PointerUpEvent>(HandlePointerUp);
                     target.RegisterCallback<PointerCaptureOutEvent>(HandlePointerCaptureOut);
+                    _graph.CameraAutomaticallyFollowed += OnCameraAutomaticallyMovedFromFollow;
                 }
 
                 protected override void UnregisterCallbacksFromTarget()
@@ -422,6 +443,7 @@ namespace UnityX.ValueMonitor.Editor
                     target.UnregisterCallback<PointerMoveEvent>(HandlePointerMove);
                     target.UnregisterCallback<PointerUpEvent>(HandlePointerUp);
                     target.UnregisterCallback<PointerCaptureOutEvent>(HandlePointerCaptureOut);
+                    _graph.CameraAutomaticallyFollowed -= OnCameraAutomaticallyMovedFromFollow;
                 }
 
                 private void HandlePointerDown(PointerDownEvent evt)
@@ -438,6 +460,12 @@ namespace UnityX.ValueMonitor.Editor
                 {
                     if (_dragStarted)
                         _graph.OnGraphContinueDrag(evt.localPosition);
+                }
+
+                private void OnCameraAutomaticallyMovedFromFollow()
+                {
+                    if (_dragStarted)
+                        _graph.OnGraphContinueDrag(_graph._lastMouseScreenPosition.Value);
                 }
 
                 private void HandlePointerUp(PointerUpEvent evt)
@@ -459,14 +487,17 @@ namespace UnityX.ValueMonitor.Editor
             public static class Style
             {
                 public const string CLASS_GRID_LABEL = "grid-label";
+                public const string CLASS_POINTED_TIME_LABEL = "pointed-time";
                 public const string CLASS_STREAM_HOVER_LABEL_VALUE = "stream-hover-value";
                 public const string CLASS_STREAM_HOVER_LABEL_NAME = "stream-hover-name";
+                public const string CLASS_STREAM_HOVER_LABEL_TIME = "stream-hover-time";
                 public static readonly Color GridAxisColor = new Color(1, 1, 1);
                 public static readonly Color GridColor = new Color(0.6f, 0.6f, 0.6f);
                 public static readonly Color GridMiniColor = new Color(0.35f, 0.35f, 0.35f);
                 public const float GRID_CELL_PER_PIXEL = 1 / 200f;
                 public const float CURVES_PADDING_VERTICAL = 40f;
                 public const float STREAM_HOVER_DIST_MIN = 25f;
+                public const float CURRENT_TIME_VERTICAL_PADDING = 26f;
             }
             private class LabelBank
             {
@@ -485,10 +516,16 @@ namespace UnityX.ValueMonitor.Editor
             private double _selectedTimeSpanStopwatchStart;
             private double _selectedTimeSpanStopwatchEnd;
             private bool _isTimeSpanSelected = false;
+            private double? _forceCurrentPointedTime;
+            private Color? _forceCurrentPointedTimeColor;
             private Dictionary<string, LabelBank> _availableLabels = new Dictionary<string, LabelBank>();
+            private Vector2 _startDragValuePos;
+            private Vector2 _endDragValuePos;
 
             public event Action<double, double> TimeSpanSelected;
             public event Action TimeSpanDeselected;
+            public event Action CameraMovedManually;
+            public event Action CameraAutomaticallyFollowed;
 
             public double SelectedTimeSpanStopwatchStart { get => _selectedTimeSpanStopwatchStart; }
             public double SelectedTimeSpanStopwatchEnd { get => _selectedTimeSpanStopwatchEnd; }
@@ -533,9 +570,6 @@ namespace UnityX.ValueMonitor.Editor
                 MarkDirtyRepaint();
                 evt.StopPropagation();
             }
-
-            private Vector2 _startDragValuePos;
-            private Vector2 _endDragValuePos;
 
             private void OnGraphStartDrag(Vector2 screenPosition)
             {
@@ -619,7 +653,7 @@ namespace UnityX.ValueMonitor.Editor
                 _graphDrawer = new GLGraphDrawer(new Material(EditorResources.LoadGLGraphShaderAsset()));
                 _graphDrawer.AutoZoomHorizontal = false;
                 _graphDrawer.ValueDisplayRect.xMin = 0;
-                _graphDrawer.ValueDisplayRect.xMax = 25;
+                _graphDrawer.ValueDisplayRect.xMax = 15;
                 _graphDrawer.GridCellPerPixel = Style.GRID_CELL_PER_PIXEL;
                 _graphDrawer.AutoZoomPadding = new Vector2(0, -Style.CURVES_PADDING_VERTICAL);
             }
@@ -630,8 +664,31 @@ namespace UnityX.ValueMonitor.Editor
                     InitializeGraph();
 
                 Monitor.ClockImpl activeClock = GetActiveClock();
-
                 List<Monitor.StreamImpl> displayedStreams = GetDisplayedStreams();
+
+                if (ValueMonitorWindowState.instance.FollowLatestValuesInGraph && displayedStreams.Count > 0)
+                {
+                    double lastStreamStopwatchTime = double.MinValue;
+                    foreach (var stream in displayedStreams)
+                    {
+                        lastStreamStopwatchTime = Math.Max(lastStreamStopwatchTime, stream.StopwatchTimes[stream.StopwatchTimes.Count - 1]);
+                    }
+                    double lastStreamClockTime = StopwatchTimeToClockTime(activeClock, lastStreamStopwatchTime);
+                    float padding = _graphDrawer.ScreenToValueVector(Vector2.right * 30f).x;
+                    float delta = (float)lastStreamClockTime - _graphDrawer.ValueDisplayRect.xMax + padding;
+
+                    float newValue = Mathf.Max(0, _graphDrawer.ValueDisplayRect.x + delta);
+                    if (newValue != _graphDrawer.ValueDisplayRect.x)
+                    {
+                        _graphDrawer.ValueDisplayRect.x = newValue;
+                        if (_lastMouseScreenPosition.HasValue)
+                        {
+                            _lastMouseValuePosition = _graphDrawer.ScreenToValuePos(_lastMouseScreenPosition.Value);
+                        }
+                        CameraAutomaticallyFollowed?.Invoke();
+                    }
+                }
+
                 UpdateGraphFromValueStreams(activeClock, displayedStreams);
                 _graphDrawer.ScreenDisplayRect = new Rect(0, contentRect.height, contentRect.width, -contentRect.height);
                 _graphDrawer.Draw();
@@ -643,6 +700,7 @@ namespace UnityX.ValueMonitor.Editor
                 DrawFocusedPoint(activeClock, displayedStreams);
                 DrawFocusedFrame(activeClock);
                 DrawSelectedTimeSpan(activeClock);
+                DrawCurrentPointedTime();
 
                 EndLabels();
             }
@@ -755,8 +813,15 @@ namespace UnityX.ValueMonitor.Editor
                             nameLabel.style.color = closestStream.Color;
                             nameLabel.text = closestStream.DisplayName + ":";
                         }
+                        _forceCurrentPointedTime = closestStreamValuePoint.x;
+                        _forceCurrentPointedTimeColor = closestStream.Color;
                         focusPointPosition = screenPos;
                         focusPointColor = closestStream.Color;
+                    }
+                    else
+                    {
+                        _forceCurrentPointedTime = null;
+                        _forceCurrentPointedTimeColor = null;
                     }
                 }
 
@@ -774,27 +839,60 @@ namespace UnityX.ValueMonitor.Editor
 
             private void DrawFocusedFrame(Monitor.ClockImpl activeClock)
             {
-                if (_lastMouseValuePosition.HasValue && _lastMouseScreenPosition.HasValue && activeClock != null)
+                if (_lastMouseValuePosition.HasValue && _lastMouseScreenPosition.HasValue)
                 {
-                    // find frame indices
-                    int frameIndexUpper = activeClock.ClockTimes.BinarySearch(_lastMouseValuePosition.Value.x);
-                    if (frameIndexUpper < 0) // if exact value is not found, result is bitwise complement (~ operator). Bring it back to positive value by reversing operation.
-                        frameIndexUpper = ~frameIndexUpper;
-                    int frameIndexLower = frameIndexUpper - 1;
+                    if (activeClock != null)
+                    {
+                        // find frame indices
+                        int frameIndexUpper = activeClock.ClockTimes.BinarySearch(_lastMouseValuePosition.Value.x);
+                        if (frameIndexUpper < 0) // if exact value is not found, result is bitwise complement (~ operator). Bring it back to positive value by reversing operation.
+                            frameIndexUpper = ~frameIndexUpper;
+                        int frameIndexLower = frameIndexUpper - 1;
 
-                    // find the visual bounds
-                    float focusedFrameValMin = frameIndexLower < 0 ? 0 : (float)activeClock.ClockTimes[frameIndexLower];
-                    float focusedFrameValMax = frameIndexUpper >= activeClock.ClockTimes.Count ? contentRect.xMax : (float)activeClock.ClockTimes[frameIndexUpper];
-                    float focusedFrameBoundMin = _graphDrawer.ValueToScreenPos(new Vector2(focusedFrameValMin, 0)).x;
-                    float focusedFrameBoundMax = _graphDrawer.ValueToScreenPos(new Vector2(focusedFrameValMax, 0)).x;
+                        // find the visual bounds
+                        float focusedFrameValMin = frameIndexLower < 0 ? 0 : (float)activeClock.ClockTimes[frameIndexLower];
+                        float focusedFrameValMax = frameIndexUpper >= activeClock.ClockTimes.Count ? contentRect.xMax : (float)activeClock.ClockTimes[frameIndexUpper];
+                        float focusedFrameBoundMin = _graphDrawer.ValueToScreenPos(new Vector2(focusedFrameValMin, 0)).x;
+                        float focusedFrameBoundMax = _graphDrawer.ValueToScreenPos(new Vector2(focusedFrameValMax, 0)).x;
 
-                    _focusFrameElement.transform.position = new Vector3(focusedFrameBoundMin, 0, 0);
-                    _focusFrameElement.transform.scale = new Vector3(Mathf.Max(2, focusedFrameBoundMax - focusedFrameBoundMin), contentRect.height, 1);
+                        _focusFrameElement.transform.position = new Vector3(focusedFrameBoundMin, 0, 0);
+                        _focusFrameElement.transform.scale = new Vector3(Mathf.Max(2, focusedFrameBoundMax - focusedFrameBoundMin), contentRect.height, 1);
+                    }
+                    else
+                    {
+                        _focusFrameElement.transform.position = new Vector3(_lastMouseScreenPosition.Value.x - 1, 0, 0);
+                        _focusFrameElement.transform.scale = new Vector3(2, contentRect.height, 1);
+                    }
+
                     _focusFrameElement.visible = true;
                 }
                 else
                 {
                     _focusFrameElement.visible = false;
+                }
+            }
+
+            private void DrawCurrentPointedTime()
+            {
+                if ((_lastMouseValuePosition.HasValue && _lastMouseScreenPosition.HasValue) || _forceCurrentPointedTime.HasValue)
+                {
+                    float timeScreenPos;
+                    float timeValue;
+                    if (_forceCurrentPointedTime.HasValue)
+                    {
+                        timeValue = (float)_forceCurrentPointedTime.Value;
+                        timeScreenPos = _graphDrawer.ValueToScreenPos(Vector2.right * (float)_forceCurrentPointedTime.Value).x;
+                    }
+                    else
+                    {
+                        timeScreenPos = _lastMouseScreenPosition.Value.x;
+                        timeValue = _lastMouseValuePosition.Value.x;
+                    }
+
+                    var label = GetNextLabel(Style.CLASS_POINTED_TIME_LABEL);
+                    label.transform.position = new Vector3(timeScreenPos, contentRect.yMax - Style.CURRENT_TIME_VERTICAL_PADDING, 0);
+                    label.style.color = _forceCurrentPointedTimeColor.HasValue ? _forceCurrentPointedTimeColor.Value : Color.white;
+                    label.text = timeValue.ToString();
                 }
             }
 
