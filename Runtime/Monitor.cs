@@ -55,7 +55,7 @@ namespace UnityX.ValueMonitor
                 return (FindTimeIndex(timeBegin, roundingAdjustment: -1), FindTimeIndex(timeEnd, roundingAdjustment: 0));
             }
 
-            public void Reset()
+            public virtual void Reset()
             {
                 StopwatchTimes.Clear();
             }
@@ -125,6 +125,12 @@ namespace UnityX.ValueMonitor
                 double lowBoundB = timesB[index - 1];
                 double highBoundB = timesB[index];
                 return lerp * (highBoundB - lowBoundB) + lowBoundB;
+            }
+
+            public override void Reset()
+            {
+                base.Reset();
+                ClockTimes.Clear();
             }
 #endif
         }
