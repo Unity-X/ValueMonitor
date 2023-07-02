@@ -226,6 +226,8 @@ namespace UnityX.ValueMonitor
             public void Reset()
             {
 #if UNITY_X_VALUE_MONITOR
+                if (Impl == null)
+                    throw new Exception("Monitor.Stream has not been created");
                 Impl.Reset();
 #endif
             }
@@ -234,6 +236,8 @@ namespace UnityX.ValueMonitor
             public void Log(float value)
             {
 #if UNITY_X_VALUE_MONITOR
+                if (Impl == null)
+                    throw new Exception("Monitor.Stream has not been created");
                 Impl.Log(value);
 #endif
             }
@@ -258,6 +262,8 @@ namespace UnityX.ValueMonitor
             public void Reset()
             {
 #if UNITY_X_VALUE_MONITOR
+                if (Impl == null)
+                    throw new Exception("Monitor.Clock has not been created");
                 Impl.Reset();
 #endif
             }
@@ -266,6 +272,8 @@ namespace UnityX.ValueMonitor
             public void Tick(double newTime)
             {
 #if UNITY_X_VALUE_MONITOR
+                if (Impl == null)
+                    throw new Exception("Monitor.Clock has not been created");
                 Impl.Tick(newTime);
 #endif
             }

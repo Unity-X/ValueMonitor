@@ -668,24 +668,32 @@ namespace UnityX.ValueMonitor.Editor
 
                 if (ValueMonitorWindowState.instance.FollowLatestValuesInGraph && displayedStreams.Count > 0)
                 {
-                    double lastStreamStopwatchTime = double.MinValue;
+                    // Find the last stream stopwatch time (could be none, if all streams have no recorded entries)
+                    double? lastStreamStopwatchTime = null;
                     foreach (var stream in displayedStreams)
                     {
-                        lastStreamStopwatchTime = Math.Max(lastStreamStopwatchTime, stream.StopwatchTimes[stream.StopwatchTimes.Count - 1]);
-                    }
-                    double lastStreamClockTime = StopwatchTimeToClockTime(activeClock, lastStreamStopwatchTime);
-                    float padding = _graphDrawer.ScreenToValueVector(Vector2.right * 30f).x;
-                    float delta = (float)lastStreamClockTime - _graphDrawer.ValueDisplayRect.xMax + padding;
-
-                    float newValue = Mathf.Max(0, _graphDrawer.ValueDisplayRect.x + delta);
-                    if (newValue != _graphDrawer.ValueDisplayRect.x)
-                    {
-                        _graphDrawer.ValueDisplayRect.x = newValue;
-                        if (_lastMouseScreenPosition.HasValue)
+                        if (stream.StopwatchTimes.Count > 0)
                         {
-                            _lastMouseValuePosition = _graphDrawer.ScreenToValuePos(_lastMouseScreenPosition.Value);
+                            lastStreamStopwatchTime = Math.Max(lastStreamStopwatchTime ?? double.MinValue, stream.StopwatchTimes[stream.StopwatchTimes.Count - 1]);
                         }
-                        CameraAutomaticallyFollowed?.Invoke();
+                    }
+
+                    if (lastStreamStopwatchTime != null)
+                    {
+                        double lastStreamClockTime = StopwatchTimeToClockTime(activeClock, lastStreamStopwatchTime.Value);
+                        float padding = _graphDrawer.ScreenToValueVector(Vector2.right * 30f).x;
+                        float delta = (float)lastStreamClockTime - _graphDrawer.ValueDisplayRect.xMax + padding;
+
+                        float newValue = Mathf.Max(0, _graphDrawer.ValueDisplayRect.x + delta);
+                        if (newValue != _graphDrawer.ValueDisplayRect.x)
+                        {
+                            _graphDrawer.ValueDisplayRect.x = newValue;
+                            if (_lastMouseScreenPosition.HasValue)
+                            {
+                                _lastMouseValuePosition = _graphDrawer.ScreenToValuePos(_lastMouseScreenPosition.Value);
+                            }
+                            CameraAutomaticallyFollowed?.Invoke();
+                        }
                     }
                 }
 
