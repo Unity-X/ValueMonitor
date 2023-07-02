@@ -104,7 +104,7 @@ namespace UnityX.ValueMonitor.Editor
                 _graphElement.MarkDirtyRepaint();
             });
 
-            _logList.onSelectedIndicesChange += OnSelectedLogsIndicesChanged;
+            _logList.selectedIndicesChanged += OnSelectedLogsIndicesChanged;
             _logList.makeItem = () => new LogElement(_resources);
             _logList.itemsSource = _frameLogs;
             _logList.bindItem = (VisualElement visual, int logIndex) => (visual as LogElement).Bind(_frameLogs[logIndex]);
