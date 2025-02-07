@@ -328,6 +328,13 @@ namespace UnityX.ValueMonitor
 #endif
         }
 
+        public static bool IsEnabled
+#if UNITY_X_VALUE_MONITOR
+            => true;
+#else
+            => false;
+#endif
+
 #if UNITY_X_VALUE_MONITOR
         private static void LogMessageReceived(string condition, string stackTrace, LogType type)
         {
